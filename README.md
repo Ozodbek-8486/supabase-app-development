@@ -4,12 +4,6 @@ Next.js 16 va Supabase yordamida qurilgan to'liq funksional real-time chat ilova
 
 ## ✨ Xususiyatlar
 
-### 🔐 Avtentifikatsiya (Authentication)
-- Email/Parol bilan ro'yxatdan o'tish va kirish
-- **Google OAuth** bilan kirish
-- **GitHub OAuth** bilan kirish
-- Sessiya boshqaruvi
-- Himoyalangan sahifalar (middleware)
 
 ### 💬 Real-Time Chat
 - Haqiqiy vaqtda xabar almashish
@@ -18,10 +12,6 @@ Next.js 16 va Supabase yordamida qurilgan to'liq funksional real-time chat ilova
 - Xabarlarni tahrirlash va o'chirish
 - Typing indicator (yozmoqda...)
 
-### 📁 Fayl Yuklash (Storage)
-- Rasm yuklash va ko'rsatish
-- Har qanday fayl yuklash
-- Fayl hajmi ko'rsatish
 
 ### 👥 Foydalanuvchi Profili
 - Profil rasmi
