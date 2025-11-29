@@ -1676,7 +1676,7 @@ function ChatPage() {
         lineNumber: 319,
         columnNumber: 5
     }, this);
-}
+} //salom 
 _s(ChatPage, "P7UtU5hpq/7Azwowwr+IVV5OUCU=");
 _c = ChatPage;
 var _c;

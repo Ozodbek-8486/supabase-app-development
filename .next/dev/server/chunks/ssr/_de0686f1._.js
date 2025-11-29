@@ -1601,7 +1601,7 @@ function ChatPage() {
         lineNumber: 319,
         columnNumber: 5
     }, this);
-}
+} //salom 
 }),
 ];
 
