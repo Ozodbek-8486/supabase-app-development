@@ -1,3 +1,6 @@
+// Bu veb sayt sinov uchun holos
+
+
 "use client"
 
 import { useState, useEffect, useRef } from "react"
