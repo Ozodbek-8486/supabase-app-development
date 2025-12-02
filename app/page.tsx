@@ -9,12 +9,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Send, MessageCircle, Loader2, Settings, X, Upload, Pencil, Trash2, Copy, Shield, Eye, EyeOff, LogOut, Key } from "lucide-react"
 
 const SUPABASE_URL = "https://kmdphhqcfbxwbnttnmqc.supabase.co"
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZHBoaHFjZmJ4d2JudHRubXFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxNzI5NDAsImV4cCI6MjA2Mzc0ODk0MH0.vMvE2cPe5ibJCCR7uvpODrBXQnIBLUV-J_BKjxoGJWI"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttZHBoaHFjZmJ4d2JudHRubXFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDAyMzcsImV4cCI6MjA3OTk3NjIzN30.4C6Rr8CFIv07blppHco_Of26SmV7k1yrahPSIYaGQO8"  
 
 interface Message {
   id: string
   username: string
   content: string
+  avatar_url: string
   created_at: string
 }
 
@@ -38,6 +39,7 @@ export default function ChatPage() {
   const [editAvatar, setEditAvatar] = useState("")
   const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null)
   const [showKeyInput, setShowKeyInput] = useState(false)
+  const [keyInputValue, setKeyInputValue] = useState("")
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
@@ -47,15 +49,21 @@ export default function ChatPage() {
   const [adminPassword, setAdminPassword] = useState("")
   const [newAdminPassword, setNewAdminPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [savedAdminPassword, setSavedAdminPassword] = useState("admin123")
+  const [savedAdminPassword, setSavedAdminPassword] = useState("Ozodbek-2008")
+  const [onlineCount, setOnlineCount] = useState(1)
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const toastTimeoutRef = useRef<NodeJS.Timeout>()
 
   // Supabase client
   useEffect(() => {
-    const key = localStorage.getItem("supabase_anon_key")
-    if (key) {
-      setSupabase(createBrowserClient(SUPABASE_URL, key))
+    const savedKey = localStorage.getItem("supabase_anon_key")
+    if (savedKey) {
+      setSupabase(createBrowserClient(SUPABASE_URL, savedKey))
+      setShowKeyInput(false)
     } else {
       setShowKeyInput(true)
     }
@@ -101,7 +109,7 @@ export default function ChatPage() {
 
         if (error) {
           console.error("Yuklashda xatolik:", JSON.stringify(error, null, 2))
-          alert(`Yuklashda xatolik: ${error.message || error.code || JSON.stringify(error)}`)
+          showToast("Yuklashda xatolik", "error")
           return
         }
         if (data) setMessages(data)
@@ -117,7 +125,7 @@ export default function ChatPage() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
-        (payload) => {
+        (payload: any) => {
           const newMsg = payload.new as Message
           setMessages((prev) => {
             if (prev.find((m) => m.id === newMsg.id)) return prev
@@ -128,7 +136,7 @@ export default function ChatPage() {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "chat_messages" },
-        (payload) => {
+        (payload: any) => {
           const updated = payload.new as Message
           setMessages((prev) => prev.map((m) => m.id === updated.id ? updated : m))
         }
@@ -136,7 +144,7 @@ export default function ChatPage() {
       .on(
         "postgres_changes",
         { event: "DELETE", schema: "public", table: "chat_messages" },
-        (payload) => {
+        (payload: any) => {
           const deleted = payload.old as { id: string }
           setMessages((prev) => prev.filter((m) => m.id !== deleted.id))
         }
@@ -152,6 +160,9 @@ export default function ChatPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+    // Online users count - unique usernames
+    const uniqueUsers = new Set(messages.map(msg => msg.username))
+    setOnlineCount(uniqueUsers.size)
   }, [messages])
 
   const handleSend = async (e: React.FormEvent) => {
@@ -163,10 +174,11 @@ export default function ChatPage() {
       const { error } = await supabase.from("chat_messages").insert({
         username,
         content: newMessage.trim(),
+        avatar_url: avatarUrl,
       })
       if (error) {
         console.error("Yuborishda xatolik:", JSON.stringify(error, null, 2))
-        alert(`Yuborishda xatolik: ${error.message || error.code || JSON.stringify(error)}`)
+        showToast("Yuborishda xatolik", "error")
       } else {
         setNewMessage("")
       }
@@ -177,29 +189,59 @@ export default function ChatPage() {
     }
   }
 
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    if (toastTimeoutRef.current !== undefined) {
+      clearTimeout(toastTimeoutRef.current)
+    }
+    setToast({ message, type })
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 2500)
+  }
+
   const handleEditMessage = async (id: string) => {
     if (!editingContent.trim() || !supabase) return
     try {
       await supabase.from("chat_messages").update({ content: editingContent.trim() }).eq("id", id)
       setEditingMessageId(null)
       setEditingContent("")
+      showToast("Xabar tahrirlandi", "success")
     } catch (err) {
       console.error("Tahrirlashda xatolik:", err)
+      showToast("Tahrirlashda xatolik", "error")
     }
   }
 
   const handleDeleteMessage = async (id: string) => {
-    if (!supabase) return
-    if (!confirm("Xabarni o'chirmoqchimisiz?")) return
+    setDeleteConfirmId(id)
+  }
+
+  const confirmDeleteMessage = async (id: string) => {
+    if (!supabase) {
+      showToast("Supabase ulanmadi", "error")
+      return
+    }
     try {
-      await supabase.from("chat_messages").delete().eq("id", id)
+      const { error } = await supabase.from("chat_messages").delete().eq("id", id)
+      if (error) {
+        console.error("O'chirishda xatolik:", error)
+        showToast("O'chirishda xatolik", "error")
+      } else {
+        showToast("Xabar o'chirildi", "success")
+        setDeleteConfirmId(null)
+      }
     } catch (err) {
       console.error("O'chirishda xatolik:", err)
+      showToast("O'chirishda xatolik", "error")
     }
   }
 
-  const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content)
+  const handleCopyMessage = (id: string, content: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopiedMessageId(id)
+      showToast("Nusxalandi", "success")
+      setTimeout(() => setCopiedMessageId(null), 2000)
+    }).catch(() => {
+      showToast("Nusxalashda xatolik", "error")
+    })
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,8 +259,10 @@ export default function ChatPage() {
       setUsername(editName.trim())
       localStorage.setItem("chat_username", editName.trim())
     }
-    setAvatarUrl(editAvatar)
-    localStorage.setItem("chat_avatar", editAvatar)
+    if (editAvatar) {
+      setAvatarUrl(editAvatar)
+      localStorage.setItem("chat_avatar", editAvatar)
+    }
     setShowSettings(false)
   }
 
@@ -229,8 +273,9 @@ export default function ChatPage() {
       setShowAdminLogin(false)
       setAdminPassword("")
       setShowPassword(false)
+      showToast("Admin logindan kirildi", "success")
     } else {
-      alert("Parol noto'g'ri!")
+      showToast("Parol noto'g'ri", "error")
     }
   }
 
@@ -242,7 +287,7 @@ export default function ChatPage() {
 
   const handleChangePassword = () => {
     if (newAdminPassword.length < 4) {
-      alert("Parol kamida 4 ta belgi bo'lishi kerak!")
+      showToast("Parol kamida 4 ta belgi bo'lishi kerak", "error")
       return
     }
     setSavedAdminPassword(newAdminPassword)
@@ -250,7 +295,7 @@ export default function ChatPage() {
     setNewAdminPassword("")
     setShowChangePassword(false)
     setShowPassword(false)
-    alert("Parol muvaffaqiyatli o'zgartirildi!")
+    showToast("Parol muvaffaqiyatli o'zgartirildi", "success")
   }
 
   const formatDateTime = (dateString: string) => {
@@ -283,21 +328,45 @@ export default function ChatPage() {
         <Card className="w-full max-w-md p-6">
           <div className="text-center mb-6">
             <MessageCircle className="w-12 h-12 mx-auto mb-3 text-indigo-600" />
-            <h2 className="text-xl font-bold text-slate-800">Supabase sozlamalari</h2>
+            <h2 className="text-xl font-bold text-slate-800">Supabase Anon Key</h2>
             <p className="text-sm mt-2 text-slate-500">
-              Supabase Dashboard → Settings → API dan anon key ni oling
+              Quyidagi keyni nusxalab inputga tashlang
             </p>
           </div>
+
+          <div className="mb-6 p-3 bg-slate-100 rounded-lg">
+            <div className="flex items-center justify-between gap-2 min-h-12">
+              <code className="text-xs text-slate-600 flex-1 overflow-auto max-h-16 font-mono">
+                {SUPABASE_ANON_KEY.substring(0, 40)}...***
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(SUPABASE_ANON_KEY)
+                  showToast("Nusxalandi", "success")
+                }}
+                className="shrink-0 p-2 hover:bg-slate-200 rounded-lg transition-colors ml-2"
+                title="Nusxalash"
+              >
+                <Copy className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+          </div>
+
           <form onSubmit={(e) => {
             e.preventDefault()
-            const input = (e.target as HTMLFormElement).key as HTMLInputElement
-            if (input.value) {
-              localStorage.setItem("supabase_anon_key", input.value)
-              setSupabase(createBrowserClient(SUPABASE_URL, input.value))
+            if (keyInputValue) {
+              localStorage.setItem("supabase_anon_key", keyInputValue)
+              setSupabase(createBrowserClient(SUPABASE_URL, keyInputValue))
               setShowKeyInput(false)
             }
           }}>
-            <Input name="key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." className="mb-4" />
+            <Input 
+              value={keyInputValue}
+              onChange={(e) => setKeyInputValue(e.target.value)}
+              placeholder="Tepadagi keyni nusxalang va buyerga tashlang..." 
+              className="mb-4" 
+            />
             <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700">
               Saqlash va boshlash
             </Button>
@@ -316,15 +385,18 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 to-indigo-50 overflow-hidden">
+    <div className="h-screen flex flex-col bg-black overflow-hidden">
       {/* Header */}
-      <header className="bg-white/90 backdrop-blur-sm shadow-sm p-3 sm:p-4 shrink-0 relative z-[60]">
+      <header className="bg-slate-900/90 backdrop-blur-sm shadow-sm p-3 sm:p-4 shrink-0 relative z-60">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-xl bg-indigo-100">
               <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
             </div>
-            <h1 className="text-lg sm:text-xl font-bold text-slate-800">Muhokama</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-white">Muhokama</h1>
+            <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
+              🟢 {onlineCount} onlayn
+            </span>
             {isAdmin && (
               <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
                 <Shield className="w-3 h-3" /> Admin
@@ -345,7 +417,7 @@ export default function ChatPage() {
 
               {/* Admin Menu */}
               {showAdminMenu && isAdmin && (
-                <div className="absolute right-0 top-12 bg-white shadow-xl rounded-xl py-2 z-[100] min-w-[180px] border border-slate-200">
+                <div className="absolute right-0 top-12 bg-white shadow-xl rounded-xl py-2 z-100 min-w-[180px] border border-slate-200">
                   <button
                     onClick={() => {
                       setShowChangePassword(true)
@@ -529,6 +601,42 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmId(null)}>
+          <Card className="w-full max-w-sm p-4 sm:p-6 relative bg-white" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={() => setDeleteConfirmId(null)}
+              className="absolute top-3 right-3 p-1 rounded-lg hover:bg-slate-100 text-slate-500"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center mb-4">
+              <Trash2 className="w-12 h-12 mx-auto mb-2 text-red-500" />
+              <h2 className="text-lg font-bold text-slate-800">Xabarni o'chirish</h2>
+              <p className="text-sm text-slate-600 mt-2">Bu amalni bekor qilish mumkin emas. Davom etmoqchimisiz?</p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteConfirmId(null)} 
+                className="flex-1"
+              >
+                Bekor qilish
+              </Button>
+              <Button 
+                onClick={() => confirmDeleteMessage(deleteConfirmId)} 
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> O'chirish
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Click outside to close admin menu */}
       {showAdminMenu && (
         <div className="fixed inset-0 z-40" onClick={() => setShowAdminMenu(false)} />
@@ -537,7 +645,7 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <div className="h-full max-w-4xl w-full mx-auto p-2 sm:p-4 flex flex-col">
-          <Card className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white/80 backdrop-blur-sm">
+          <Card className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-800/80 backdrop-blur-sm">
             <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4" ref={scrollRef}>
               {messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-500">
@@ -559,17 +667,18 @@ export default function ChatPage() {
                     return (
                       <div key={msg.id} className={`flex gap-2 sm:gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
                         <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0">
-                          {isOwn && avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+                          {(isOwn && avatarUrl) && <AvatarImage src={avatarUrl} alt={username} />}
+                          {!isOwn && msg.avatar_url && <AvatarImage src={msg.avatar_url} alt={msg.username} />}
                           <AvatarFallback className={`${getAvatarColor(msg.username)} text-white text-xs sm:text-sm font-medium`}>
                             {msg.username.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className={`max-w-[75%] sm:max-w-[70%] ${isOwn ? "text-right" : ""}`}>
                           <div className={`flex items-center gap-1 sm:gap-2 mb-1 ${isOwn ? "flex-row-reverse" : ""}`}>
-                            <span className="text-xs sm:text-sm font-semibold text-slate-700">
+                            <span className="text-xs sm:text-sm font-semibold text-white">
                               {msg.username}
                             </span>
-                            <span className="text-[10px] sm:text-xs text-slate-400">
+                            <span className="text-[10px] sm:text-xs text-gray-400">
                               {formatDateTime(msg.created_at)}
                             </span>
                           </div>
@@ -595,7 +704,7 @@ export default function ChatPage() {
                                 className={`inline-block rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 ${
                                   isOwn
                                     ? "bg-indigo-600 text-white rounded-tr-sm"
-                                    : "bg-white text-slate-700 rounded-tl-sm shadow-sm border border-slate-100"
+                                    : "bg-slate-700 text-white rounded-tl-sm shadow-sm border border-slate-600"
                                 }`}
                               >
                                 <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{msg.content}</p>
@@ -604,11 +713,15 @@ export default function ChatPage() {
                               {/* Action Buttons */}
                               <div className={`flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${isOwn ? "justify-end" : "justify-start"}`}>
                                 <button
-                                  onClick={() => handleCopyMessage(msg.content)}
-                                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                                  onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    copiedMessageId === msg.id 
+                                      ? "bg-green-100 text-green-600" 
+                                      : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                  }`}
                                   title="Nusxalash"
                                 >
-                                  <Copy className="w-3.5 h-3.5" />
+                                  {copiedMessageId === msg.id ? "✓" : <Copy className="w-3.5 h-3.5" />}
                                 </button>
                                 {showActions && (
                                   <>
@@ -643,14 +756,14 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="p-3 sm:p-4 shrink-0 bg-slate-50 border-t border-slate-200">
+            <div className="p-3 sm:p-4 shrink-0 bg-slate-800 border-t border-slate-700">
               <form onSubmit={handleSend} className="flex gap-2">
                 <Input
                   placeholder="Xabar yozing..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   disabled={sending}
-                  className="flex-1 text-sm h-11 bg-white border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="flex-1 text-sm h-11 bg-slate-700 text-white border-slate-600 focus:border-indigo-500 focus:ring-indigo-500"
                   autoFocus
                 />
                 <Button 
@@ -665,9 +778,19 @@ export default function ChatPage() {
           </Card>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 left-4 right-4 sm:bottom-6 sm:right-6 sm:left-auto sm:w-auto max-w-xs px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4 ${
+          toast.type === 'success' ? 'bg-green-500 text-white' :
+          toast.type === 'error' ? 'bg-red-500 text-white' :
+          'bg-blue-500 text-white'
+        }`}>
+          {toast.type === 'success' && '✓ '}
+          {toast.type === 'error' && '✕ '}
+          {toast.message}
+        </div>
+      )}
     </div>
   )
 }
-
-
-//salom 
